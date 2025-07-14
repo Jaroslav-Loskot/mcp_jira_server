@@ -1,0 +1,13 @@
+POST http://localhost:8000/mcp/query
+Content-Type: application/json
+
+{
+  "user": "jaroslav",
+  "intent": "get_jira_issues",
+  "parameters": {
+    "jql": "project = \"Application Support\" AND priority in (High, Highest) AND created >= -2w ORDER BY created DESC",
+    "only_count" : false
+  }
+}
+
+

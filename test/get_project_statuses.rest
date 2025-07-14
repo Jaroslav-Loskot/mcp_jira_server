@@ -1,0 +1,10 @@
+POST http://localhost:8000/mcp/query
+Content-Type: application/json
+
+{
+  "user": "jaroslav",
+  "intent": "get_project_metadata",
+  "parameters": {
+    "project": "AS"
+  }
+}

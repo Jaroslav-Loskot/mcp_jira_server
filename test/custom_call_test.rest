@@ -1,0 +1,12 @@
+POST http://localhost:8000/mcp/query
+Content-Type: application/json
+
+{
+  "user": "jaroslav",
+  "intent": "get_ticket_details",
+  "parameters": {
+    "ticket": "AS-15515"
+  },
+  "natural_language": "Get details and comments for ticket AFS-123"
+}
+

@@ -1,0 +1,10 @@
+### MCP: Get Jira projects
+POST http://localhost:8000/mcp/query
+Content-Type: application/json
+
+{
+  "user": "jaroslav",
+  "intent": "get_jira_projects",
+  "parameters": {},
+  "natural_language": "Get all Jira projects"
+}
