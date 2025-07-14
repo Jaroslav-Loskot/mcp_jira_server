@@ -45,7 +45,7 @@ class JiraIssue(BaseModel):
     assignee: Optional[str] = None
     url: str
 
-@app.post("/mcp/query")
+@app.post("/jira/query")
 async def mcp_query(query: MCPQuery):
     if query.intent == "get_jira_issues":
         project = query.parameters.get("project")

@@ -35,7 +35,7 @@ docker-compose up --build
 
 ### 4. Access
 
-* MCP API: [http://localhost:8000/mcp/query](http://localhost:8000/mcp/query)
+* MCP API: [http://localhost:8000/jira/query](http://localhost:8000/jira/query)
 * Health check: [http://localhost:8000/health](http://localhost:8000/health)
 
 ## 🔧 Supported Intents
@@ -111,7 +111,7 @@ Get full ticket info:
 You can use `.rest` files with VS Code extension [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client):
 
 ```http
-POST http://localhost:8000/mcp/query
+POST http://localhost:8000/jira/query
 Content-Type: application/json
 
 {
