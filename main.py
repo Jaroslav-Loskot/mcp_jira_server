@@ -72,29 +72,30 @@ async def mcp_query(query: MCPQuery):
         else:
             jql_parts = []
 
-            if project:
-                projects = to_list(project)
-                jql_parts.append(f"project in ({','.join(f'\"{p}\"' for p in projects)})")
+        if project:
+            projects = to_list(project)
+            jql_parts.append("project in (" + ",".join(f'"{p}"' for p in projects) + ")")
 
-            if assignee:
-                assignees = to_list(assignee)
-                jql_parts.append(f"assignee in ({','.join(f'\"{a}\"' for a in assignees)})")
+        if assignee:
+            assignees = to_list(assignee)
+            jql_parts.append("assignee in (" + ",".join(f'"{a}"' for a in assignees) + ")")
 
-            if status_list:
-                statuses = to_list(status_list)
-                jql_parts.append(f"status in ({','.join(f'\"{s}\"' for s in statuses)})")
+        if status_list:
+            statuses = to_list(status_list)
+            jql_parts.append("status in (" + ",".join(f'"{s}"' for s in statuses) + ")")
 
-            if priority:
-                priorities = to_list(priority)
-                jql_parts.append(f"priority in ({','.join(f'\"{p}\"' for p in priorities)})")
+        if priority:
+            priorities = to_list(priority)
+            jql_parts.append("priority in (" + ",".join(f'"{p}"' for p in priorities) + ")")
 
-            if issue_type:
-                types = to_list(issue_type)
-                jql_parts.append(f"issuetype in ({','.join(f'\"{t}\"' for t in types)})")
+        if issue_type:
+            types = to_list(issue_type)
+            jql_parts.append("issuetype in (" + ",".join(f'"{t}"' for t in types) + ")")
 
-            if labels:
-                label_list = to_list(labels)
-                jql_parts.append(f"labels in ({','.join(f'\"{l}\"' for l in label_list)})")
+        if labels:
+            label_list = to_list(labels)
+            jql_parts.append("labels in (" + ",".join(f'"{l}"' for l in label_list) + ")")
+
 
             if created_after:
                 jql_parts.append(f"created >= \"{created_after}\"")
