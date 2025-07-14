@@ -1,18 +1,15 @@
-POST http://localhost:8000/mcp/query
+POST http://localhost:8000/jira/query
 Content-Type: application/json
 
 {
-  "user": "jaroslav",
+  "user": "alice@example.com",
   "intent": "get_jira_issues",
   "parameters": {
     "project": ["AS"],
-    "priority": ["High", "Highest"],
-    "created_after": "2024-12-01",
-    "created_before": "2025-01-01",
-    "limit": 100,
+    "created_after": "-1w",
+    "created_before": "-1d",
     "only_count": false
-  },
-  "natural_language": "Get all AFS or SEC issues assigned to me or John that are in progress, high priority, bugs or stories, with backend or urgent labels, created in December 2024"
+  }
 }
 
 

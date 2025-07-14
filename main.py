@@ -45,6 +45,40 @@ class JiraIssue(BaseModel):
     assignee: Optional[str] = None
     url: str
 
+
+
+from datetime import datetime, timedelta
+import re
+
+def parse_relative_date(relative_str: str) -> Optional[str]:
+    """
+    Converts relative time strings like '-1d', '-2w', '-3m', '-4h' into ISO 8601 date string (YYYY-MM-DD).
+    """
+    match = re.fullmatch(r"-([0-9]+)([dwmyh])", relative_str.strip())
+    if not match:
+        return None
+
+    value, unit = int(match.group(1)), match.group(2)
+    now = datetime.utcnow()
+
+    if unit == "d":
+        dt = now - timedelta(days=value)
+    elif unit == "w":
+        dt = now - timedelta(weeks=value)
+    elif unit == "m":
+        # Approximate a month as 30 days
+        dt = now - timedelta(days=value * 30)
+    elif unit == "y":
+        dt = now - timedelta(days=value * 365)
+    elif unit == "h":
+        dt = now - timedelta(hours=value)
+    else:
+        return None
+
+    return dt.strftime("%Y-%m-%d")
+
+
+
 @app.post("/jira/query")
 async def mcp_query(query: MCPQuery):
     if query.intent == "get_jira_issues":
@@ -97,12 +131,16 @@ async def mcp_query(query: MCPQuery):
             jql_parts.append("labels in (" + ",".join(f'"{l}"' for l in label_list) + ")")
 
 
-            if created_after:
-                jql_parts.append(f"created >= \"{created_after}\"")
-            if created_before:
-                jql_parts.append(f"created <= \"{created_before}\"")
+        if created_after:
+            parsed_after = parse_relative_date(created_after) or created_after
+            jql_parts.append(f'created >= "{parsed_after}"')
 
-            jql = " AND ".join(jql_parts)
+        if created_before:
+            parsed_before = parse_relative_date(created_before) or created_before
+            jql_parts.append(f'created <= "{parsed_before}"')
+
+
+        jql = " AND ".join(jql_parts)
 
         all_issues = []
         start_at = 0
