@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import requests
@@ -7,7 +8,9 @@ from typing import Optional
 from services.field_mapping import FIELD_LABEL_TO_ID
 from utils.bedrock_wrapper import call_claude
 from services.jira_metadata_service import get_field_definitions, get_issue_metadata
-from services.field_formatting import format_value_for_field
+from services.field_formatting import format_value_for_field, resolve_field_id_fuzzy
+
+
 from difflib import get_close_matches
 from services.jira_metadata_service import get_issue_details  # or the correct module where it's defined
 
@@ -41,15 +44,6 @@ def extract_value_from_message(message: str) -> Optional[str]:
         return quote_match.group(1)
     return None
 
-def resolve_field_id_fuzzy(user_label: str, label_to_id: dict) -> tuple[str, str] | None:
-    normalized = user_label.lower().strip()
-    possible = get_close_matches(normalized, label_to_id.keys(), n=1, cutoff=0.6)
-    if possible:
-        matched_label = possible[0]
-        return matched_label, label_to_id[matched_label]
-    return None
-
-
 def update_project_charter_field(ticket_key: str, message: str) -> dict:
     # Step 1: LLM parses the instruction
     parsed = parse_charter_update_with_claude(message)
@@ -64,7 +58,7 @@ def update_project_charter_field(ticket_key: str, message: str) -> dict:
         return {"status": "error", "message": "Missing field label or value."}
 
     # Step 2: Fuzzy match the user label to field_id
-    match = resolve_field_id_fuzzy(user_label, FIELD_LABEL_TO_ID)
+    match = resolve_field_id_fuzzy(user_label, message)
     if not match:
         return {"status": "error", "message": f"No matching field found for '{user_label}'."}
 
@@ -74,8 +68,11 @@ def update_project_charter_field(ticket_key: str, message: str) -> dict:
     try:
         project_key, issue_type = get_issue_metadata(ticket_key)
         field_defs = get_field_definitions(project_key, issue_type)
-        field_schema = field_defs.get(field_id)
 
+        logging.info(f"🔧 Looking up field schema for field_id: {field_id}")
+        logging.info(f"All field definitions keys: {list(field_defs.keys())}")
+
+        field_schema = field_defs.get(field_id)
         if not field_schema:
             return {"status": "error", "message": f"Could not find field schema for {field_id}."}
     except Exception as e:
@@ -102,12 +99,22 @@ def update_project_charter_field(ticket_key: str, message: str) -> dict:
     except ValueError as ve:
         return {"status": "error", "message": str(ve)}
 
+    # Extract final resolved value for logging/response
+    if isinstance(formatted_value, dict) and "value" in formatted_value:
+        resolved_value = formatted_value["value"]
+    elif isinstance(formatted_value, list) and all(isinstance(i, dict) and "value" in i for i in formatted_value):
+        resolved_value = [i["value"] for i in formatted_value]
+    else:
+        resolved_value = formatted_value
+
     # Step 6: Build update payload
     payload = {
         "fields": {
             field_id: formatted_value
         }
     }
+
+    print(f"Updating {field_id} with: {json.dumps(payload, indent=2)}")
 
     response = requests.put(
         f"{JIRA_BASE_URL}/rest/api/3/issue/{ticket_key}",
@@ -128,10 +135,11 @@ def update_project_charter_field(ticket_key: str, message: str) -> dict:
         "ticket": ticket_key,
         "field_label": matched_label,
         "field_id": field_id,
-        "new_value": new_value,
+        "new_value": resolved_value,
         "action": action,
         "message": f"Field '{matched_label}' ({field_id}) updated via '{action}' successfully."
     }
+
 
 
 import json

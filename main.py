@@ -9,7 +9,14 @@ from pathlib import Path
 import base64
 from services.project_charter_service import update_project_charter_field
 from services.field_mapping import FIELD_LABEL_TO_ID
+import logging
 
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 
 # Load .env from root directory

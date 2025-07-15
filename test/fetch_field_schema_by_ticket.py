@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -14,22 +15,15 @@ HEADERS = {
 }
 
 
-def get_issue_metadata(issue_key: str):
+def get_issue(issue_key: str) -> dict:
     url = f"{JIRA_BASE_URL}/rest/api/3/issue/{issue_key}"
     resp = requests.get(url, headers=HEADERS)
-
     if resp.status_code != 200:
         raise Exception(f"❌ Failed to fetch issue: {resp.status_code}\n{resp.text}")
-
-    data = resp.json()
-    project_key = data["fields"]["project"]["key"]
-    issue_type_name = data["fields"]["issuetype"]["name"]
-
-    print(f"✅ Project: {project_key} | Issue Type: {issue_type_name}")
-    return project_key, issue_type_name
+    return resp.json()
 
 
-def get_field_definitions(project_key: str, issue_type_name: str):
+def get_field_definitions(project_key: str, issue_type_name: str) -> dict:
     url = f"{JIRA_BASE_URL}/rest/api/3/issue/createmeta"
     params = {
         "projectKeys": project_key,
@@ -38,7 +32,7 @@ def get_field_definitions(project_key: str, issue_type_name: str):
 
     resp = requests.get(url, headers=HEADERS, params=params)
     if resp.status_code != 200:
-        raise Exception(f"❌ Failed to fetch create metadata: {resp.status_code}\n{resp.text}")
+        raise Exception(f"❌ Failed to fetch field definitions: {resp.status_code}\n{resp.text}")
 
     data = resp.json()
     for project in data.get("projects", []):
@@ -49,14 +43,32 @@ def get_field_definitions(project_key: str, issue_type_name: str):
     raise Exception("❌ No matching issue type found.")
 
 
-if __name__ == "__main__":
-    issue_key = "DELTP-7867"  # Change this to your actual issue key
-    project_key, issue_type = get_issue_metadata(issue_key)
-    field_defs = get_field_definitions(project_key, issue_type)
+def dump_customfield_values(issue_data: dict, field_defs: dict):
+    print("\n📋 Custom Fields with Values:")
+    fields = issue_data.get("fields", {})
 
-    print("\n📋 Custom Fields:")
-    for fid, info in field_defs.items():
-        if fid.startswith("customfield_"):
-            name = info.get("name")
-            schema = info.get("schema", {})
-            print(f"{fid} → {name} ({schema.get('type')})")
+    for field_id, value in fields.items():
+        if not field_id.startswith("customfield_"):
+            continue
+        if isinstance(value, (str, int)) and value:
+            field_info = field_defs.get(field_id, {})
+            field_name = field_info.get("name", "❓ Unknown")
+            field_type = field_info.get("schema", {}).get("type", "❓")
+            print(f"{field_id} → {field_name}: {value} ({field_type})")
+        elif isinstance(value, dict) and "value" in value:
+            field_info = field_defs.get(field_id, {})
+            field_name = field_info.get("name", "❓ Unknown")
+            field_type = field_info.get("schema", {}).get("type", "❓")
+            print(f"{field_id} → {field_name}: {value['value']} ({field_type})")
+
+
+if __name__ == "__main__":
+    issue_key = "DELTP-7867"
+    issue_data = get_issue(issue_key)
+    project_key = issue_data["fields"]["project"]["key"]
+    issue_type = issue_data["fields"]["issuetype"]["name"]
+
+    print(f"✅ Project: {project_key} | Issue Type: {issue_type}")
+
+    field_defs = get_field_definitions(project_key, issue_type)
+    dump_customfield_values(issue_data, field_defs)
