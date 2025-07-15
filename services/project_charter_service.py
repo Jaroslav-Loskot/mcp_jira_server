@@ -1,9 +1,15 @@
+import json
 import os
 import re
 import requests
 from dotenv import load_dotenv
 from typing import Optional
 from services.field_mapping import FIELD_LABEL_TO_ID
+from utils.bedrock_wrapper import call_claude
+from services.jira_metadata_service import get_field_definitions, get_issue_metadata
+from services.field_formatting import format_value_for_field
+from difflib import get_close_matches
+from services.jira_metadata_service import get_issue_details  # or the correct module where it's defined
 
 
 load_dotenv()
@@ -35,18 +41,71 @@ def extract_value_from_message(message: str) -> Optional[str]:
         return quote_match.group(1)
     return None
 
+def resolve_field_id_fuzzy(user_label: str, label_to_id: dict) -> tuple[str, str] | None:
+    normalized = user_label.lower().strip()
+    possible = get_close_matches(normalized, label_to_id.keys(), n=1, cutoff=0.6)
+    if possible:
+        matched_label = possible[0]
+        return matched_label, label_to_id[matched_label]
+    return None
+
+
 def update_project_charter_field(ticket_key: str, message: str) -> dict:
-    field_id = resolve_field_id_from_message(message)
-    if not field_id:
-        return {"status": "error", "message": "Could not resolve target field from input."}
+    # Step 1: LLM parses the instruction
+    parsed = parse_charter_update_with_claude(message)
+    if "error" in parsed:
+        return {"status": "error", "message": parsed["error"]}
 
-    new_value = extract_value_from_message(message)
-    if new_value is None:
-        return {"status": "error", "message": "Could not extract new value from input."}
+    user_label = parsed.get("field_label", "").strip()
+    new_value = parsed.get("value")
+    action = parsed.get("action", "replace").lower()  # default to replace
 
+    if not user_label or new_value is None:
+        return {"status": "error", "message": "Missing field label or value."}
+
+    # Step 2: Fuzzy match the user label to field_id
+    match = resolve_field_id_fuzzy(user_label, FIELD_LABEL_TO_ID)
+    if not match:
+        return {"status": "error", "message": f"No matching field found for '{user_label}'."}
+
+    matched_label, field_id = match
+
+    # Step 3: Get metadata and schema
+    try:
+        project_key, issue_type = get_issue_metadata(ticket_key)
+        field_defs = get_field_definitions(project_key, issue_type)
+        field_schema = field_defs.get(field_id)
+
+        if not field_schema:
+            return {"status": "error", "message": f"Could not find field schema for {field_id}."}
+    except Exception as e:
+        return {"status": "error", "message": f"Metadata lookup failed: {str(e)}"}
+
+    # Step 4: For array fields, get current value from issue
+    try:
+        current_values = []
+        if field_schema.get("schema", {}).get("type") == "array":
+            issue_details = get_issue_details(ticket_key)
+            current_raw = issue_details["fields"].get(field_id, [])
+            current_values = [v["value"] for v in current_raw if isinstance(v, dict) and "value" in v]
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to fetch current values: {str(e)}"}
+
+    # Step 5: Format value with context (including current values if array field)
+    try:
+        formatted_value = format_value_for_field(
+            field_schema=field_schema,
+            value=new_value,
+            current_values=current_values,
+            action=action
+        )
+    except ValueError as ve:
+        return {"status": "error", "message": str(ve)}
+
+    # Step 6: Build update payload
     payload = {
         "fields": {
-            field_id: new_value
+            field_id: formatted_value
         }
     }
 
@@ -60,13 +119,66 @@ def update_project_charter_field(ticket_key: str, message: str) -> dict:
     if response.status_code != 204:
         return {
             "status": "error",
-            "message": f"Jira update failed: {response.status_code}",
+            "message": f"Jira update failed with status code {response.status_code}",
             "jira_response": response.text
         }
 
     return {
         "status": "success",
+        "ticket": ticket_key,
+        "field_label": matched_label,
         "field_id": field_id,
         "new_value": new_value,
-        "message": f"Field {field_id} updated successfully"
+        "action": action,
+        "message": f"Field '{matched_label}' ({field_id}) updated via '{action}' successfully."
     }
+
+
+import json
+import re
+
+def parse_charter_update_with_claude(instruction: str) -> dict:
+    system_prompt = """
+You are an assistant that parses user instructions for updating Jira project charters.
+
+Given a natural language instruction like:
+- "Set expected go-live date to 12-12-2026"
+- "Add CFFC service, Phishing detection"
+- "Remove Brand Abuse Mitigation from CFFC"
+- "Change support mode to L1+L2"
+
+Your task is to extract:
+1. `field_label` — name of the field being updated
+2. `value` — the new value (can be a string or list)
+3. `action` — one of "replace", "add", or "remove"
+
+Return **only** a JSON object in this format:
+```json
+{
+  "field_label": "cffc services included",
+  "value": ["Phishing detection"],
+  "action": "add"
+}
+```
+
+Rules:
+- Use "add" if the instruction says things like "add", "include", "append", or "also".
+- Use "remove" if it says "remove", "delete", "exclude".
+- Default to "replace" for set/change/update/modify.
+
+Be strict about outputting valid JSON only.
+"""
+
+    raw_response = call_claude(system_prompt, instruction)
+
+    try:
+        # Strip markdown block formatting if present
+        match = re.search(r'{.*}', raw_response, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON object found in Claude response")
+
+        cleaned = match.group(0)
+        return json.loads(cleaned)
+
+    except Exception as e:
+        return {"error": f"Failed to parse Claude response: {e}", "raw": raw_response}

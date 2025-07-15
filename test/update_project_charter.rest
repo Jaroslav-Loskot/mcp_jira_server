@@ -1,0 +1,11 @@
+POST http://localhost:8000/jira/query
+Content-Type: application/json
+
+{
+  "user": "jaroslav",
+  "intent": "update_project_charter",
+  "parameters": {
+    "ticket": "DELTP-7867",
+    "update_instruction": "Add CFFC serice, Phishing detection"
+  }
+}
