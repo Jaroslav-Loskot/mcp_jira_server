@@ -65,6 +65,17 @@ def resolve_field_id_fuzzy(user_label: str, instruction: str) -> tuple[str, str]
 def format_value_for_field(field_schema: dict, value: Any, current_values: Any = None, action: str = "replace") -> Any:
     field_type = field_schema.get("schema", {}).get("type")
 
+    if value is None:
+    # If clearing a value, return None directly (only if field type allows it)
+        field_type = field_schema.get("schema", {}).get("type")
+        if field_type in ["string", "number", "date"]:
+            return None
+        elif field_type == "array":
+            return []
+        else:
+            raise ValueError(f"Clearing not supported for field type: {field_type}")
+        
+        
     if field_type in ["option", "option-with-child"]:
         allowed = [opt["value"] for opt in field_schema.get("allowedValues", []) if "value" in opt]
         matched = fuzzy_match_value(str(value), allowed)
@@ -98,5 +109,6 @@ def format_value_for_field(field_schema: dict, value: Any, current_values: Any =
 
     if field_type in ["string", "number"]:
         return value
+    
 
     return value

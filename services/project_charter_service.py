@@ -54,8 +54,9 @@ def update_project_charter_field(ticket_key: str, message: str) -> dict:
     new_value = parsed.get("value")
     action = parsed.get("action", "replace").lower()  # default to replace
 
-    if not user_label or new_value is None:
+    if not user_label or "value" not in parsed:
         return {"status": "error", "message": "Missing field label or value."}
+
 
     # Step 2: Fuzzy match the user label to field_id
     match = resolve_field_id_fuzzy(user_label, message)
@@ -96,6 +97,7 @@ def update_project_charter_field(ticket_key: str, message: str) -> dict:
             current_values=current_values,
             action=action
         )
+        print(f"INFO: formatted_value type: {type(formatted_value)}, value: {formatted_value}")
     except ValueError as ve:
         return {"status": "error", "message": str(ve)}
 
@@ -154,10 +156,11 @@ Given a natural language instruction like:
 - "Add CFFC service, Phishing detection"
 - "Remove Brand Abuse Mitigation from CFFC"
 - "Change support mode to L1+L2"
+- "Clear the project start date"
 
 Your task is to extract:
 1. `field_label` — name of the field being updated
-2. `value` — the new value (can be a string or list)
+2. `value` — the new value (can be a string, list, or `null`)
 3. `action` — one of "replace", "add", or "remove"
 
 Return **only** a JSON object in this format:
@@ -167,17 +170,23 @@ Return **only** a JSON object in this format:
   "value": ["Phishing detection"],
   "action": "add"
 }
-```
-
 Rules:
-- Use "add" if the instruction says things like "add", "include", "append", or "also".
-- Use "remove" if it says "remove", "delete", "exclude".
-- Default to "replace" for set/change/update/modify.
+
+Use "add" if the instruction says things like "add", "include", "append", or "also".
+
+Use "remove" if it says "remove", "delete", "exclude".
+
+Use "replace" for set/change/update/modify.
+
+If the instruction is about clearing or emptying a field, set value to null and use "replace" as the action.
 
 Be strict about outputting valid JSON only.
 """
 
     raw_response = call_claude(system_prompt, instruction)
+
+    logging.info(f"📥 LLM raw response: {raw_response}")
+
 
     try:
         # Strip markdown block formatting if present
