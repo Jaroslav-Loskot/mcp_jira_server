@@ -32,61 +32,34 @@ def fuzzy_match_value(user_value: str, allowed: list[str]) -> str | None:
 
 
 def resolve_field_id_fuzzy(user_label: str, instruction: str) -> tuple[str, str] | None:
-    logging.info(f"🔍 [START] Trying to resolve field for user_label: '{user_label}'")
+    logging.info(f"🔍 [LLM-ONLY] Resolving field for user_label: '{user_label}'")
 
     try:
-        logging.info(f"📦 Generating embedding for: '{user_label}'")
-        user_embedding = fetch_embedding(user_label)
-        logging.info(f"🔢 Embedding shape: {len(user_embedding)} values")
-
-        distances = []
-        for record in FIELD_EMBEDDINGS:
-            label = record["field_label"]
-            field_id = record["field_id"]
-            embedding = record["embedding"]
-
-            dot = sum(a * b for a, b in zip(user_embedding, embedding))
-            norm_a = sum(a * a for a in user_embedding) ** 0.5
-            norm_b = sum(b * b for b in embedding) ** 0.5
-            similarity = dot / (norm_a * norm_b + 1e-6)
-            distance = 1 - similarity  # lower = closer
-
-            distances.append((distance, label, field_id))
-
-        distances.sort()
-        top_5 = distances[:5]
-
-        logging.info("🔝 Top 5 closest field labels:")
-        for dist, label, _ in top_5:
-            logging.info(f" → {label} (distance: {dist:.4f})")
-
-        labels_only = [label for _, label, _ in top_5]
         prompt = (
-            f"You are an assistant that helps identify the best matching Jira field.\n"
-            f"The user instruction is: \"{instruction}\"\n"
-            f"Which of the following field labels best matches this instruction?\n"
-            + "\n".join(f"- {label}" for label in labels_only) +
-            "\n\nRespond with just the best matching label."
+            f"A user asked to update a Jira project charter field."
+            f"Instruction: \"{instruction}\""
+            f"Choose the most relevant field label from this list:"
+            + "\n".join(f"- {label}" for label in FIELD_LABEL_TO_ID.keys()) +
+            "\n\nRespond ONLY with the exact best matching label from the list above."
         )
 
-        chosen_label = call_claude(
-            system_prompt="You help map user instructions to correct Jira field labels.",
-            user_input=prompt
+        llm_result = call_claude(
+            "You help match user instructions to Jira field labels for project charters.",
+            prompt
         ).strip()
 
-        logging.info(f"🤖 LLM selected: '{chosen_label}'")
+        logging.info(f"🤖 LLM selected label: '{llm_result}'")
 
-        for _, label, fid in top_5:
-            if label.lower() == chosen_label.lower():
-                return label, fid
-
-        logging.warning(f"❌ LLM selected label '{chosen_label}' not found in top-5.")
-        return None
+        field_id = FIELD_LABEL_TO_ID.get(llm_result)
+        if field_id:
+            return llm_result, field_id
+        else:
+            logging.warning(f"⚠️ LLM picked '{llm_result}' which is not in FIELD_LABEL_TO_ID.")
 
     except Exception as e:
-        logging.warning(f"⚠️ Embedding-based field resolution failed: {e}")
-        return None
+        logging.warning(f"⚠️ LLM-based field resolution failed: {e}")
 
+    return None
 
 
 def format_value_for_field(field_schema: dict, value: Any, current_values: Any = None, action: str = "replace") -> Any:

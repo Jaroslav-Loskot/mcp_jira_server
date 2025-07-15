@@ -6,6 +6,6 @@ Content-Type: application/json
   "intent": "update_project_charter",
   "parameters": {
     "ticket": "DELTP-7867",
-    "update_instruction": "Change the SPOC email to jon.doe@email.com"
+    "update_instruction": "Remove the parner's country"
   }
 }
