@@ -7,6 +7,10 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from pathlib import Path
 import base64
+from services.project_charter_service import update_project_charter_field
+from services.field_mapping import FIELD_LABEL_TO_ID
+
+
 
 # Load .env from root directory
 env_path = Path(__file__).resolve().parent / ".env"
@@ -45,15 +49,10 @@ class JiraIssue(BaseModel):
     assignee: Optional[str] = None
     url: str
 
-
-
 from datetime import datetime, timedelta
 import re
 
 def parse_relative_date(relative_str: str) -> Optional[str]:
-    """
-    Converts relative time strings like '-1d', '-2w', '-3m', '-4h' into ISO 8601 date string (YYYY-MM-DD).
-    """
     match = re.fullmatch(r"-([0-9]+)([dwmyh])", relative_str.strip())
     if not match:
         return None
@@ -66,7 +65,6 @@ def parse_relative_date(relative_str: str) -> Optional[str]:
     elif unit == "w":
         dt = now - timedelta(weeks=value)
     elif unit == "m":
-        # Approximate a month as 30 days
         dt = now - timedelta(days=value * 30)
     elif unit == "y":
         dt = now - timedelta(days=value * 365)
@@ -334,7 +332,6 @@ async def mcp_query(query: MCPQuery):
         fields = issue_data.get("fields", {})
         names = issue_data.get("names", {})
 
-        # Define standard fields
         standard_fields = {
             "Issue Key": issue_data.get("key"),
             "Summary": fields.get("summary"),
@@ -345,28 +342,14 @@ async def mcp_query(query: MCPQuery):
             "Due Date": fields.get("duedate")
         }
 
-        # List of custom field IDs to extract
-        interesting_customfields = {
-            "customfield_10149", "customfield_10150", "customfield_10151", "customfield_10154",
-            "customfield_10158", "customfield_10159", "customfield_10160", "customfield_10161",
-            "customfield_10176", "customfield_10184", "customfield_10185", "customfield_10186",
-            "customfield_10187", "customfield_10188", "customfield_10189", "customfield_10190",
-            "customfield_10191", "customfield_10192", "customfield_10193", "customfield_10195",
-            "customfield_10199", "customfield_10200", "customfield_10201", "customfield_10204",
-            "customfield_10208", "customfield_10209", "customfield_10210", "customfield_10238",
-            "customfield_10240", "customfield_10248", "customfield_10249", "customfield_10250",
-            "customfield_10251", "customfield_10252", "customfield_10253", "customfield_10254",
-            "customfield_10255", "customfield_10256", "customfield_10257", "customfield_10258",
-            "customfield_10259", "customfield_10260", "customfield_10261", "customfield_10262",
-            "customfield_10263", "customfield_10264", "customfield_10265", "customfield_10266"
-        }
-
         def format_field(value):
             if isinstance(value, dict) and "value" in value:
                 return value["value"]
             elif isinstance(value, list):
                 return [v.get("value", str(v)) for v in value if isinstance(v, dict)]
             return value
+
+        interesting_customfields = set(FIELD_LABEL_TO_ID.values())
 
         custom_fields = {
             names.get(fid, fid): format_field(fields[fid])
@@ -380,9 +363,18 @@ async def mcp_query(query: MCPQuery):
             "summary_fields": {**standard_fields, **custom_fields},
             "url": f"{JIRA_BASE_URL}/browse/{issue_key}"
         })
-    
-    raise HTTPException(status_code=400, detail="Unsupported intent")
 
+    elif query.intent == "update_project_charter":
+        ticket_key = query.parameters.get("ticket")
+        message = query.parameters.get("update_instruction")
+
+        if not ticket_key or not message:
+            raise HTTPException(status_code=400, detail="Missing 'ticket' or 'update_instruction' parameter")
+
+        result = update_project_charter_field(ticket_key, message)
+        return JSONResponse(content=result)
+
+    raise HTTPException(status_code=400, detail="Unsupported intent")
 
 @app.get("/")
 async def root():
