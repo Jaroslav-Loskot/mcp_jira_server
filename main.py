@@ -316,7 +316,73 @@ async def mcp_query(query: MCPQuery):
             "url": f"{JIRA_BASE_URL}/browse/{issue_key}"
         })
 
+    elif query.intent == "get_project_charter":
+        issue_key = query.parameters.get("ticket")
+        if not issue_key:
+            raise HTTPException(status_code=400, detail="Missing 'ticket' parameter")
+
+        issue_resp = requests.get(
+            f"{JIRA_BASE_URL}/rest/api/3/issue/{issue_key}",
+            headers=HEADERS,
+            params={"expand": "names"}
+        )
+
+        if issue_resp.status_code != 200:
+            raise HTTPException(status_code=404, detail=f"Issue {issue_key} not found")
+
+        issue_data = issue_resp.json()
+        fields = issue_data.get("fields", {})
+        names = issue_data.get("names", {})
+
+        # Define standard fields
+        standard_fields = {
+            "Issue Key": issue_data.get("key"),
+            "Summary": fields.get("summary"),
+            "Status": fields.get("status", {}).get("name"),
+            "Assignee": fields.get("assignee", {}).get("displayName") if fields.get("assignee") else None,
+            "Created": fields.get("created"),
+            "Updated": fields.get("updated"),
+            "Due Date": fields.get("duedate")
+        }
+
+        # List of custom field IDs to extract
+        interesting_customfields = {
+            "customfield_10149", "customfield_10150", "customfield_10151", "customfield_10154",
+            "customfield_10158", "customfield_10159", "customfield_10160", "customfield_10161",
+            "customfield_10176", "customfield_10184", "customfield_10185", "customfield_10186",
+            "customfield_10187", "customfield_10188", "customfield_10189", "customfield_10190",
+            "customfield_10191", "customfield_10192", "customfield_10193", "customfield_10195",
+            "customfield_10199", "customfield_10200", "customfield_10201", "customfield_10204",
+            "customfield_10208", "customfield_10209", "customfield_10210", "customfield_10238",
+            "customfield_10240", "customfield_10248", "customfield_10249", "customfield_10250",
+            "customfield_10251", "customfield_10252", "customfield_10253", "customfield_10254",
+            "customfield_10255", "customfield_10256", "customfield_10257", "customfield_10258",
+            "customfield_10259", "customfield_10260", "customfield_10261", "customfield_10262",
+            "customfield_10263", "customfield_10264", "customfield_10265", "customfield_10266"
+        }
+
+        def format_field(value):
+            if isinstance(value, dict) and "value" in value:
+                return value["value"]
+            elif isinstance(value, list):
+                return [v.get("value", str(v)) for v in value if isinstance(v, dict)]
+            return value
+
+        custom_fields = {
+            names.get(fid, fid): format_field(fields[fid])
+            for fid in interesting_customfields
+            if fid in fields and fields[fid] is not None
+        }
+
+        return JSONResponse(content={
+            "status": "success",
+            "ticket": issue_key,
+            "summary_fields": {**standard_fields, **custom_fields},
+            "url": f"{JIRA_BASE_URL}/browse/{issue_key}"
+        })
+    
     raise HTTPException(status_code=400, detail="Unsupported intent")
+
 
 @app.get("/")
 async def root():

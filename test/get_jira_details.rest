@@ -5,10 +5,7 @@ Content-Type: application/json
   "user": "alice@example.com",
   "intent": "get_jira_issues",
   "parameters": {
-    "project": ["AS"],
-    "created_after": "-1w",
-    "created_before": "-1d",
-    "only_count": false
+    "project": ["AS"]
   }
 }
 

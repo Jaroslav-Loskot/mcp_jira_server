@@ -1,0 +1,11 @@
+POST http://localhost:8000/jira/query
+Content-Type: application/json
+
+{
+  "user": "jaroslav",
+  "intent": "get_project_charter",
+  "parameters": {
+    "ticket": "DELPROJ-2443"
+  },
+  "natural_language": "Get full charter details for AFS-123"
+}
